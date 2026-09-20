@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>打字小英雄 · 小学生打字练习</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⌨️</text></svg>">
+<link rel="stylesheet" href="assets/css/main.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="#/">
+    <span class="brand-ic">⌨️</span>
+    <span class="brand-tx">打字小英雄</span>
+  </a>
+  <nav class="nav">
+    <a href="#/" data-nav="home">首页</a>
+    <a href="#/courses" data-nav="courses">课程</a>
+    <a href="#/test" data-nav="test">测速</a>
+    <a href="#/game" data-nav="game">挑战</a>
+    <a href="#/rank" data-nav="rank">排行榜</a>
+    <a href="#/stats" data-nav="stats">报告</a>
+  </nav>
+  <div class="top-actions">
+    <span class="user-chip" id="userChip" title="账号状态">…</span>
+    <button class="icon-btn" id="btnSound" title="音效开关">🔊</button>
+    <button class="icon-btn" id="btnTheme" title="夜间模式">🌙</button>
+  </div>
+</header>
+
+<main id="app" class="container"></main>
+
+<footer class="footer">
+  <p>打字小英雄 · 纯前端离线版，进度保存在本机浏览器 ❤️ 每天练习 10 分钟，手指会越来越听话</p>
+</footer>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/store.js"></script>
+<script src="assets/js/api.js"></script>
+<script src="assets/js/audio.js"></script>
+<script src="assets/js/keyboard.js"></script>
+<script src="assets/js/engine.js"></script>
+<script src="assets/js/views.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,150 @@
+#!/usr/bin/env bash
+# 打字小英雄 · 命令行启动器
+# 用法：
+#   dazi            启动服务并打开浏览器
+#   dazi stop       停止服务
+#   dazi restart    重启服务
+#   dazi status     查看运行状态
+#   dazi open       只打开网页
+#   dazi log        查看运行日志
+#   dazi info       显示网址 / 教师口令 / 数据文件位置
+
+set -u
+
+# ---- 定位项目目录 ----
+SRC="${BASH_SOURCE[0]:-$0}"
+while [ -L "$SRC" ]; do
+  DIR="$(cd -P "$(dirname "$SRC")" && pwd)"
+  SRC="$(readlink "$SRC")"
+  [[ "$SRC" != /* ]] && SRC="$DIR/$SRC"
+done
+HOME_DIR="${DAZI_HOME:-$(cd -P "$(dirname "$SRC")" && pwd)}"
+
+SERVER="$HOME_DIR/server/server.js"
+RUNDIR="$HOME_DIR/server/data"
+PIDFILE="$RUNDIR/server.pid"
+LOGFILE="$RUNDIR/server.log"
+PORTFILE="$RUNDIR/port.txt"
+
+mkdir -p "$RUNDIR"
+
+# ---- 颜色 ----
+C_G=$'\033[32m'; C_Y=$'\033[33m'; C_B=$'\033[36m'; C_R=$'\033[31m'; C_0=$'\033[0m'
+
+# ---- 找到 node ----
+find_node() {
+  if command -v node >/dev/null 2>&1; then NODE_BIN="$(command -v node)"; return 0; fi
+  local c
+  for c in "$HOME"/.local/share/fnm/node-versions/*/installation/bin/node \
+           "$HOME"/.nvm/versions/node/*/bin/node \
+           /opt/homebrew/bin/node /usr/local/bin/node /usr/bin/node; do
+    [ -x "$c" ] && NODE_BIN="$c"
+  done
+  [ -n "${NODE_BIN:-}" ] && return 0
+  return 1
+}
+
+port() {
+  local p=""
+  [ -f "$PORTFILE" ] && p="$(cat "$PORTFILE" 2>/dev/null | tr -d '[:space:]')"
+  if [ -z "$p" ]; then p="5173"; fi
+  echo "$p"
+}
+
+alive() {
+  [ -f "$PIDFILE" ] || return 1
+  local pid; pid="$(cat "$PIDFILE" 2>/dev/null)"
+  [ -n "$pid" ] || return 1
+  kill -0 "$pid" 2>/dev/null
+}
+
+url() { echo "http://localhost:$(port)"; }
+
+wait_up() {
+  local i p
+  for i in $(seq 1 40); do
+    p="$(port)"
+    if curl -s -m 1 "http://localhost:$p/api/health" >/dev/null 2>&1; then return 0; fi
+    sleep 0.25
+  done
+  return 1
+}
+
+do_start() {
+  if alive; then
+    echo "${C_Y}服务已在运行${C_0} → $(url)"
+    return 0
+  fi
+  if ! find_node; then
+    echo "${C_R}没找到 node，请先安装 Node.js（https://nodejs.org）${C_0}"
+    exit 1
+  fi
+  [ -f "$SERVER" ] || { echo "${C_R}找不到 $SERVER${C_0}"; exit 1; }
+
+  : > "$PORTFILE"
+  nohup "$NODE_BIN" "$SERVER" >> "$LOGFILE" 2>&1 &
+  echo $! > "$PIDFILE"
+
+  if ! wait_up; then
+    echo "${C_R}启动失败，请查看日志：$LOGFILE${C_0}"
+    tail -n 20 "$LOGFILE"
+    exit 1
+  fi
+  echo "${C_G}✓ 服务已启动${C_0} → ${C_B}$(url)${C_0}"
+}
+
+do_open() {
+  local u; u="$(url)"
+  if command -v open >/dev/null 2>&1; then open "$u"
+  elif command -v xdg-open >/dev/null 2>&1; then xdg-open "$u"
+  else echo "请手动打开：$u"; fi
+}
+
+do_stop() {
+  if ! alive; then echo "${C_Y}服务未在运行${C_0}"; rm -f "$PIDFILE"; return 0; fi
+  local pid; pid="$(cat "$PIDFILE")"
+  kill "$pid" 2>/dev/null
+  sleep 0.6
+  kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null
+  rm -f "$PIDFILE"
+  echo "${C_G}✓ 服务已停止${C_0}"
+}
+
+do_status() {
+  if alive; then
+    echo "${C_G}● 运行中${C_0}  网址 $(url)  PID $(cat "$PIDFILE")"
+    curl -s -m 2 "http://localhost:$(port)/api/health" | head -c 200; echo
+  else
+    echo "${C_Y}○ 未运行${C_0}"
+  fi
+}
+
+do_info() {
+  echo "项目目录： $HOME_DIR"
+  echo "网址：     $(url)"
+  echo "数据文件： $RUNDIR/db.json"
+  echo "日志文件： $LOGFILE"
+  echo "教师口令： ${DAZI_TEACHER_CODE:-dazi2026}  (可用 DAZI_TEACHER_CODE 环境变量改)"
+  echo "使用 node： ${NODE_BIN:-未知}"
+}
+
+case "${1:-start}" in
+  start)
+    do_start
+    do_open
+    echo
+    echo "按 ${C_Y}Ctrl+C${C_0} 退出日志（服务会在后台继续运行）；输入 ${C_Y}dazi stop${C_0} 可停止服务"
+    trap 'echo; echo "日志已退出，服务仍在后台运行"' INT
+    tail -f "$LOGFILE"
+    ;;
+  stop)    do_stop ;;
+  restart) do_stop; do_start; do_open ;;
+  status)  do_status ;;
+  open)    alive || do_start; do_open ;;
+  log)     tail -f "$LOGFILE" ;;
+  info)    find_node; do_info ;;
+  -h|--help|help)
+    sed -n '2,10p' "$0" | sed 's/^#//'
+    ;;
+  *) echo "未知命令：$1（试试 dazi --help）"; exit 1 ;;
+esac
