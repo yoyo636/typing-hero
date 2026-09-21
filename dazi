@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # 打字小英雄 · 命令行启动器
-# 用法：
-#   dazi            启动服务并打开浏览器
-#   dazi stop       停止服务
-#   dazi restart    重启服务
-#   dazi status     查看运行状态
-#   dazi open       只打开网页
-#   dazi log        查看运行日志
-#   dazi info       显示网址 / 教师口令 / 数据文件位置
+#   dazi             启动服务并打开浏览器
+#   dazi lan         以局域网模式启动（同学/平板也能访问）
+#   dazi stop        停止服务
+#   dazi restart     重启服务
+#   dazi status      查看运行状态
+#   dazi open        只打开网页
+#   dazi log         查看运行日志
+#   dazi info        网址 / 数据文件 / 教师口令
+#   dazi backup      备份学生数据到 ~/dazi-backups
+#   dazi doctor      自检：node / 端口 / 数据 / 日志
+#   dazi autostart   设置开机自启（on / off / status）
 
 set -u
 
@@ -25,13 +28,13 @@ RUNDIR="$HOME_DIR/server/data"
 PIDFILE="$RUNDIR/server.pid"
 LOGFILE="$RUNDIR/server.log"
 PORTFILE="$RUNDIR/port.txt"
-
+HOSTFILE="$RUNDIR/host.txt"
 mkdir -p "$RUNDIR"
 
-# ---- 颜色 ----
 C_G=$'\033[32m'; C_Y=$'\033[33m'; C_B=$'\033[36m'; C_R=$'\033[31m'; C_0=$'\033[0m'
 
 # ---- 找到 node ----
+NODE_BIN=""
 find_node() {
   if command -v node >/dev/null 2>&1; then NODE_BIN="$(command -v node)"; return 0; fi
   local c
@@ -44,35 +47,61 @@ find_node() {
   return 1
 }
 
+# ---- 参数 ----
+PORT="${DAZI_PORT:-5173}"
+HOST="${DAZI_HOST:-127.0.0.1}"
+MODE="lan-off"
+ARGS=("$@")
+SUB="${1:-start}"
+i=1
+while [ $i -le ${#ARGS[@]} ]; do
+  case "${ARGS[$((i-1))]}" in
+    --port) PORT="${ARGS[$i]}"; i=$((i+1)) ;;
+    --host) HOST="${ARGS[$i]}"; i=$((i+1)) ;;
+  esac
+  i=$((i+1))
+done
+
 port() {
   local p=""
-  [ -f "$PORTFILE" ] && p="$(cat "$PORTFILE" 2>/dev/null | tr -d '[:space:]')"
-  if [ -z "$p" ]; then p="5173"; fi
-  echo "$p"
+  [ -f "$PORTFILE" ] && p="$(tr -d '[:space:]' < "$PORTFILE" 2>/dev/null)"
+  echo "${p:-$PORT}"
 }
-
+host() {
+  local h=""
+  [ -f "$HOSTFILE" ] && h="$(tr -d '[:space:]' < "$HOSTFILE" 2>/dev/null)"
+  echo "${h:-127.0.0.1}"
+}
 alive() {
   [ -f "$PIDFILE" ] || return 1
   local pid; pid="$(cat "$PIDFILE" 2>/dev/null)"
   [ -n "$pid" ] || return 1
   kill -0 "$pid" 2>/dev/null
 }
-
-url() { echo "http://localhost:$(port)"; }
+local_url() {
+  if [ "$(host)" = "0.0.0.0" ]; then echo "http://localhost:$(port)"; else echo "http://$(host):$(port)"; fi
+}
+lan_ip() {
+  local ip=""
+  command -v ipconfig >/dev/null 2>&1 && ip="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null)"
+  [ -z "$ip" ] && command -v hostname >/dev/null 2>&1 && ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  [ -z "$ip" ] && ip="$(ip route get 1 2>/dev/null | awk '{print $7; exit}')"
+  echo "$ip"
+}
 
 wait_up() {
-  local i p
+  local i
   for i in $(seq 1 40); do
-    p="$(port)"
-    if curl -s -m 1 "http://localhost:$p/api/health" >/dev/null 2>&1; then return 0; fi
+    if curl -s -m 1 "http://localhost:$(port)/api/health" >/dev/null 2>&1; then return 0; fi
     sleep 0.25
   done
   return 1
 }
 
 do_start() {
+  local h="$1"
   if alive; then
-    echo "${C_Y}服务已在运行${C_0} → $(url)"
+    echo "${C_Y}服务已在运行${C_0} → $(local_url)"
     return 0
   fi
   if ! find_node; then
@@ -81,8 +110,9 @@ do_start() {
   fi
   [ -f "$SERVER" ] || { echo "${C_R}找不到 $SERVER${C_0}"; exit 1; }
 
-  : > "$PORTFILE"
-  nohup "$NODE_BIN" "$SERVER" >> "$LOGFILE" 2>&1 &
+  echo "$PORT" > "$PORTFILE"
+  echo "$h" > "$HOSTFILE"
+  nohup "$NODE_BIN" "$SERVER" --port "$PORT" --host "$h" >> "$LOGFILE" 2>&1 &
   echo $! > "$PIDFILE"
 
   if ! wait_up; then
@@ -90,15 +120,15 @@ do_start() {
     tail -n 20 "$LOGFILE"
     exit 1
   fi
-  echo "${C_G}✓ 服务已启动${C_0} → ${C_B}$(url)${C_0}"
+  echo "${C_G}✓ 服务已启动${C_0} → ${C_B}$(local_url)${C_0}"
+  if [ "$h" = "0.0.0.0" ]; then
+    local ip; ip="$(lan_ip)"
+    echo "  局域网地址（同学/平板用这个）：${C_B}http://${ip:-你的IP}:$(port)${C_0}"
+    echo "  教师后台： $(local_url)/#/teacher"
+  fi
 }
 
-do_open() {
-  local u; u="$(url)"
-  if command -v open >/dev/null 2>&1; then open "$u"
-  elif command -v xdg-open >/dev/null 2>&1; then xdg-open "$u"
-  else echo "请手动打开：$u"; fi
-}
+do_open() { open "$(local_url)" 2>/dev/null || echo "请手动打开：$(local_url)"; }
 
 do_stop() {
   if ! alive; then echo "${C_Y}服务未在运行${C_0}"; rm -f "$PIDFILE"; return 0; fi
@@ -112,39 +142,157 @@ do_stop() {
 
 do_status() {
   if alive; then
-    echo "${C_G}● 运行中${C_0}  网址 $(url)  PID $(cat "$PIDFILE")"
-    curl -s -m 2 "http://localhost:$(port)/api/health" | head -c 200; echo
+    echo "${C_G}● 运行中${C_0}  网址 $(local_url)  PID $(cat "$PIDFILE")"
+    local ip; ip="$(lan_ip)"
+    [ "$(host)" = "0.0.0.0" ] && [ -n "$ip" ] && echo "  局域网： http://$ip:$(port)"
+    curl -s -m 2 "http://localhost:$(port)/api/health"; echo
   else
     echo "${C_Y}○ 未运行${C_0}"
   fi
 }
 
 do_info() {
+  find_node
   echo "项目目录： $HOME_DIR"
-  echo "网址：     $(url)"
+  echo "网址：     $(local_url)"
+  echo "监听地址： $(host)（dazi lan 可切换为局域网模式）"
   echo "数据文件： $RUNDIR/db.json"
   echo "日志文件： $LOGFILE"
   echo "教师口令： ${DAZI_TEACHER_CODE:-dazi2026}  (可用 DAZI_TEACHER_CODE 环境变量改)"
   echo "使用 node： ${NODE_BIN:-未知}"
 }
 
-case "${1:-start}" in
-  start)
-    do_start
-    do_open
-    echo
-    echo "按 ${C_Y}Ctrl+C${C_0} 退出日志（服务会在后台继续运行）；输入 ${C_Y}dazi stop${C_0} 可停止服务"
-    trap 'echo; echo "日志已退出，服务仍在后台运行"' INT
-    tail -f "$LOGFILE"
-    ;;
-  stop)    do_stop ;;
-  restart) do_stop; do_start; do_open ;;
-  status)  do_status ;;
-  open)    alive || do_start; do_open ;;
-  log)     tail -f "$LOGFILE" ;;
-  info)    find_node; do_info ;;
+do_backup() {
+  local dir="$HOME/dazi-backups"
+  mkdir -p "$dir"
+  if [ ! -f "$RUNDIR/db.json" ]; then echo "${C_Y}还没有数据文件${C_0}"; return 0; fi
+  local f="$dir/db-$(date +%Y%m%d-%H%M%S).json"
+  cp "$RUNDIR/db.json" "$f"
+  echo "${C_G}✓ 已备份${C_0} → $f"
+  ls -1t "$dir" | head -5 | sed 's/^/   /'
+}
+
+do_doctor() {
+  echo "🩺 自检报告"
+  if find_node; then
+    echo "  ${C_G}✓${C_0} node：$NODE_BIN （$("$NODE_BIN" -v)）"
+  else
+    echo "  ${C_R}✗ 找不到 node${C_0}"
+  fi
+  [ -f "$SERVER" ] && echo "  ${C_G}✓${C_0} 服务脚本存在" || echo "  ${C_R}✗ 缺少 $SERVER${C_0}"
+  if [ -d "$RUNDIR" ]; then
+    local n size
+    n="$(ls -1 "$RUNDIR" 2>/dev/null | wc -l | tr -d ' ')"
+    size="$(du -sh "$RUNDIR" 2>/dev/null | awk '{print $1}')"
+    echo "  ${C_G}✓${C_0} 数据目录： ${RUNDIR}（$n 个文件，${size}）"
+  else
+    echo "  ${C_Y}!${C_0} 数据目录不存在（首次启动会自动创建）"
+  fi
+  if [ -f "$RUNDIR/db.json" ]; then
+    local u
+    u="$(grep -o '"id"' "$RUNDIR/db.json" 2>/dev/null | wc -l | tr -d ' ')"
+    echo "  ${C_G}✓${C_0} 学生数据已存在（约 $u 条记录）"
+  fi
+  if alive; then
+    echo "  ${C_G}✓${C_0} 服务运行中 $(local_url)"
+  else
+    echo "  ${C_Y}!${C_0} 服务未运行，输入 dazi 启动"
+  fi
+  local lastbak
+  lastbak="$(ls -1t "$HOME/dazi-backups" 2>/dev/null | head -1)"
+  if [ -n "$lastbak" ]; then
+    echo "  ${C_G}✓${C_0} 最近备份：$HOME/dazi-backups/$lastbak"
+  else
+    echo "  ${C_Y}!${C_0} 还没有备份，建议定期执行 dazi backup"
+  fi
+  if [ -f "$LOGFILE" ]; then
+    local bad
+    bad="$(grep -ci 'error\|异常\|失败' "$LOGFILE" 2>/dev/null)"
+    [ "${bad:-0}" -gt 0 ] && echo "  ${C_Y}!${C_0} 日志里有 $bad 条疑似错误信息（dazi log 查看）" \
+      || echo "  ${C_G}✓${C_0} 日志无异常"
+  fi
+}
+
+PLIST="$HOME/Library/LaunchAgents/com.dazi.typing-hero.plist"
+UNIT="$HOME/.config/systemd/user/dazi.service"
+do_autostart() {
+  local act="${1:-on}"
+  case "$act" in
+    status)
+      [ -f "$PLIST" ] && echo "macOS 登录项：已安装" || echo "macOS 登录项：未安装"
+      [ -f "$UNIT" ] && echo "systemd 服务：已安装" || echo "systemd 服务：未安装"
+      return 0 ;;
+    off)
+      [ -f "$PLIST" ] && { launchctl unload -w "$PLIST" 2>/dev/null; rm -f "$PLIST"; echo "${C_G}✓ 已取消开机自启${C_0}"; }
+      [ -f "$UNIT" ] && { systemctl --user disable --now dazi.service >/dev/null 2>&1; rm -f "$UNIT"; echo "${C_G}✓ 已取消 systemd 自启${C_0}"; }
+      return 0 ;;
+  esac
+  find_node || { echo "${C_R}找不到 node${C_0}"; exit 1; }
+  local curhost; curhost="$(host)"
+  if [ -d "$HOME/Library/LaunchAgents" ] || [ "$(uname)" = "Darwin" ]; then
+    mkdir -p "$HOME/Library/LaunchAgents"
+    cat > "$PLIST" <<PLISTEOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.dazi.typing-hero</string>
+  <key>WorkingDirectory</key><string>$HOME_DIR</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$NODE_BIN</string>
+    <string>$SERVER</string>
+    <string>--port</string><string>$PORT</string>
+    <string>--host</string><string>$curhost</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>$LOGFILE</string>
+  <key>StandardErrorPath</key><string>$LOGFILE</string>
+</dict>
+</plist>
+PLISTEOF
+    if launchctl bootout "gui/$(id -u)" "$PLIST" >/dev/null 2>&1; then :; fi
+    launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null || launchctl load -w "$PLIST" 2>/dev/null
+    echo "${C_G}✓ 已设置开机自启${C_0}（plist：${PLIST}）"
+    echo "  取消： dazi autostart off"
+  elif command -v systemctl >/dev/null 2>&1; then
+    mkdir -p "$HOME/.config/systemd/user"
+    cat > "$UNIT" <<UNITEOF
+[Unit]
+Description=打字小英雄 typing-hero
+After=network.target
+
+[Service]
+WorkingDirectory=$HOME_DIR
+ExecStart=$NODE_BIN $SERVER --port $PORT --host $curhost
+Restart=always
+
+[Install]
+WantedBy=default.target
+UNITEOF
+    systemctl --user daemon-reload >/dev/null 2>&1
+    systemctl --user enable --now dazi.service >/dev/null 2>&1
+    echo "${C_G}✓ 已设置 systemd 用户级自启${C_0}"
+  else
+    echo "${C_R}暂不支持的系統，请手动把下面命令加入启动项：${C_0}"
+    echo "  $NODE_BIN $SERVER --port $PORT --host $curhost"
+  fi
+}
+
+case "$SUB" in
+  start)    do_start "$HOST"; do_open; echo; echo "按 ${C_Y}Ctrl+C${C_0} 退出日志（服务继续后台运行）；${C_Y}dazi stop${C_0} 停止服务"; trap 'echo; echo "日志已退出，服务仍在后台运行"' INT; tail -f "$LOGFILE" ;;
+  lan)      do_start "0.0.0.0"; do_open; trap 'echo' INT; tail -f "$LOGFILE" ;;
+  stop)     do_stop ;;
+  restart)  do_stop; do_start "$(host)"; do_open ;;
+  status)   do_status ;;
+  open)     alive || do_start "$HOST"; do_open ;;
+  log)      tail -f "$LOGFILE" ;;
+  info)     do_info ;;
+  backup)   do_backup ;;
+  doctor)   do_doctor ;;
+  autostart) do_autostart "${2:-on}" ;;
   -h|--help|help)
-    sed -n '2,10p' "$0" | sed 's/^#//'
-    ;;
-  *) echo "未知命令：$1（试试 dazi --help）"; exit 1 ;;
+    sed -n '2,14p' "$0" | sed 's/^#//' ;;
+  *) echo "未知命令：${SUB}（试试 dazi --help）"; exit 1 ;;
 esac

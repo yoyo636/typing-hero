@@ -10,6 +10,10 @@ window.App = window.App || {};
     profile: { name: '小英雄', createdAt: Date.now() },
     lessons: {},          // id -> { stars, bestSpeed, bestAcc, bestScore, times, passed, updatedAt }
     sessions: [],         // { t, mode, lessonId, speed, acc, chars, ms }
+    mistakes: {           // 错词本
+      words: {},          // 英文单词 -> 错误次数
+      zh: {}              // 中文错句 / 错词 -> 错误次数
+    },
     keyErrors: {},        // 键 -> 错误次数
     keyHits: {},
     game: { best: 0, plays: 0 },
@@ -96,6 +100,51 @@ window.App = window.App || {};
       save();
       schedulePush();
       return l;
+    },
+
+    /* ---------------- 错词本 ---------------- */
+
+    /** 英文：记一个打错的单词；中文：记打错的句子/词 */
+    recordMistake: function (kind, text) {
+      if (!text) return;
+      var s = load();
+      s.mistakes = s.mistakes || { words: {}, zh: {} };
+      var bag = kind === 'zh' ? (s.mistakes.zh = s.mistakes.zh || {}) : (s.mistakes.words = s.mistakes.words || {});
+      var k = String(text).trim().slice(0, 40);
+      if (!k) return;
+      bag[k] = (bag[k] || 0) + 1;
+      save();
+    },
+
+    mistakes: function (kind) {
+      var s = load();
+      s.mistakes = s.mistakes || { words: {}, zh: {} };
+      return kind === 'zh' ? s.mistakes.zh : s.mistakes.words;
+    },
+
+    topWeakWords: function (n) {
+      var w = Store.mistakes('en');
+      return Object.keys(w).map(function (k) { return { w: k, n: w[k] }; })
+        .sort(function (a, b) { return b.n - a.n; }).slice(0, n || 10);
+    },
+
+    topWeakKeys: function (n) {
+      var s = load();
+      var e = s.keyErrors || {};
+      return Object.keys(e).map(function (k) { return { k: k, n: e[k] }; })
+        .sort(function (a, b) { return b.n - a.n; }).slice(0, n || 5);
+    },
+
+    clearMistakes: function (kind) {
+      var s = load();
+      s.mistakes = s.mistakes || { words: {}, zh: {} };
+      if (kind === 'zh') s.mistakes.zh = {}; else s.mistakes.words = {};
+      save();
+    },
+
+    /** 今日训练计划（来自 data.buildDailyPlan） */
+    plan: function () {
+      return App.data.buildDailyPlan();
     },
 
     /** 记录按键统计 */
@@ -225,6 +274,7 @@ window.App = window.App || {};
       totalChars: s.totalChars || 0,
       keyErrors: s.keyErrors || {},
       keyHits: s.keyHits || {},
+      mistakes: s.mistakes || { words: {}, zh: {} },
       game: s.game || { best: 0, plays: 0 }
     };
   }
@@ -280,6 +330,13 @@ window.App = window.App || {};
       s.game.best = Math.max(s.game.best || 0, progress.game.best || 0);
       s.game.plays = Math.max(s.game.plays || 0, progress.game.plays || 0);
     }
+    s.mistakes = s.mistakes || { words: {}, zh: {} };
+    var pm = progress.mistakes || {};
+    ['words', 'zh'].forEach(function (f) {
+      s.mistakes[f] = s.mistakes[f] || {};
+      var o = pm[f] || {};
+      Object.keys(o).forEach(function (k) { s.mistakes[f][k] = Math.max(s.mistakes[f][k] || 0, o[k] || 0); });
+    });
     save();
   }
 

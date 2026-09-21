@@ -168,6 +168,29 @@ window.App = window.App || {};
       if (cfg.onFinish) cfg.onFinish(res);
     }
 
+    /* ---------- 错词本 ---------- */
+
+    /** 英文：取光标所在的单词；中文：取光标所在的句子 */
+    function rememberMistake(at) {
+      if (!App.store || !App.store.recordMistake) return;
+      if (mode === 'zh') {
+        var start = text.lastIndexOf('。', at);
+        if (start < 0) start = text.lastIndexOf('，', at);
+        if (start < 0) start = text.lastIndexOf('！', at);
+        if (start < 0) start = text.lastIndexOf('？', at);
+        var end = text.indexOf('。', at);
+        if (end < 0) end = text.indexOf('，', at);
+        if (end < 0) end = text.length;
+        App.store.recordMistake('zh', text.slice(start + 1, end + 1));
+        return;
+      }
+      var s = text.lastIndexOf(' ', at);
+      var e = text.indexOf(' ', at);
+      if (e < 0) e = text.length;
+      var word = text.slice(s + 1, e).trim();
+      if (word) App.store.recordMistake('en', word);
+    }
+
     /* ---------- 英文输入 ---------- */
     function onKeyDown(e) {
       if (finished) return;
@@ -206,6 +229,7 @@ window.App = window.App || {};
         errors++;
         errFlag = true;
         combo = 0;
+        rememberMistake(idx);
         App.sound.wrong();
       }
       paint();
@@ -226,11 +250,14 @@ window.App = window.App || {};
       if (!started) start();
       if (paused) return;
       var v = input.value;
-      var err = 0;
-      for (var i = 0; i < v.length && i < total; i++) if (v[i] !== text[i]) err++;
+      var err = 0, firstBad = -1;
+      for (var i = 0; i < v.length && i < total; i++) {
+        if (v[i] !== text[i]) { err++; if (firstBad < 0) firstBad = i; }
+      }
       if (err > prevErr) {
         errors += (err - prevErr);
         combo = 0;
+        if (firstBad >= 0) rememberMistake(firstBad);
         App.sound.wrong();
       } else if (v.length > idx) {
         combo += v.length - idx;

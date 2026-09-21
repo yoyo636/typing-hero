@@ -6,6 +6,7 @@ const path = require('path');
 const vm = require('vm');
 const crypto = require('crypto');
 const db = require('./db');
+const pk = require('./pk');
 
 const ROOT = path.join(__dirname, '..', '..');
 const TEACHER_CODE = process.env.DAZI_TEACHER_CODE || 'dazi2026';
@@ -85,7 +86,11 @@ function tokenOf(req, url) {
 }
 
 function emptyProgress() {
-  return { lessons: {}, totalMs: 0, totalChars: 0, keyErrors: {}, keyHits: {}, game: { best: 0, plays: 0 } };
+  return {
+    lessons: {}, totalMs: 0, totalChars: 0,
+    keyErrors: {}, keyHits: {}, mistakes: { words: {}, zh: {} },
+    game: { best: 0, plays: 0 }
+  };
 }
 
 function mergeLesson(a, b) {
@@ -120,6 +125,14 @@ function mergeProgress(dst, src) {
     dst.game.best = Math.max(num(dst.game.best), num(src.game.best));
     dst.game.plays = Math.max(num(dst.game.plays), num(src.game.plays));
   }
+  dst.mistakes = dst.mistakes || { words: {}, zh: {} };
+  ['words', 'zh'].forEach(function (f) {
+    dst.mistakes[f] = dst.mistakes[f] || {};
+    const o = (src && src.mistakes && src.mistakes[f]) || {};
+    Object.keys(o).forEach(function (k) {
+      dst.mistakes[f][k] = Math.max(num(dst.mistakes[f][k]), num(o[k]));
+    });
+  });
   return dst;
 }
 
@@ -153,14 +166,26 @@ function userSummary(u, sessions) {
 /* ---------------- 课程数据（从前端 data.js 读取，单一数据源） ---------------- */
 
 let courseCache = null;
+let appRef = null;
+
+/** 拿到沙箱里的 App（含 buildTestText 等函数） */
+function appData() {
+  if (!appRef) loadCourses();
+  return appRef;
+}
 
 function loadCourses() {
   if (courseCache) return courseCache;
-  const src = fs.readFileSync(path.join(ROOT, 'assets', 'js', 'data.js'), 'utf8');
+  const dir = path.join(ROOT, 'assets', 'js');
   const sandbox = { window: {} };
   vm.createContext(sandbox);
-  vm.runInContext(src, sandbox);
+  // packs.js（内容包）必须在 data.js 之前执行
+  ['packs.js', 'data.js'].forEach(function (f) {
+    const file = path.join(dir, f);
+    if (fs.existsSync(file)) vm.runInContext(fs.readFileSync(file, 'utf8'), sandbox, { filename: f });
+  });
   const d = sandbox.window.App.data;
+  appRef = sandbox.window.App;
   courseCache = {
     chapters: JSON.parse(JSON.stringify(d.chapters)),
     tips: d.tips || []
@@ -176,7 +201,7 @@ const routes = {
     const s = state();
     ok(res, {
       name: '打字小英雄',
-      version: '1.1.0',
+      version: '1.2.0',
       users: s.users.length,
       classes: Object.keys(s.classes || {}).length,
       sessions: s.sessions.length,
@@ -358,6 +383,47 @@ const routes = {
     });
   },
 
+  /* ---------- 实时 PK ---------- */
+  'POST /api/pk/create': function (req, res, url, body, ctx) {
+    const r = pk.create(tokenOf(req, url));
+    if (r.error) return fail(res, 400, r.error);
+    ok(res, r);
+  },
+
+  'POST /api/pk/join': function (req, res, url, body, ctx) {
+    const r = pk.join(tokenOf(req, url), body.code);
+    if (r.error) return fail(res, 400, r.error);
+    ok(res, r);
+  },
+
+  'POST /api/pk/start': function (req, res, url, body, ctx) {
+    const r = pk.start(tokenOf(req, url), body.code);
+    if (r.error) return fail(res, 400, r.error);
+    ok(res, r);
+  },
+
+  'POST /api/pk/progress': function (req, res, url, body, ctx) {
+    const r = pk.progress(tokenOf(req, url), body.code, body);
+    if (r.error) return fail(res, 400, r.error);
+    ok(res, r);
+  },
+
+  'POST /api/pk/leave': function (req, res, url, body, ctx) {
+    pk.leave(tokenOf(req, url), body.code);
+    ok(res, { left: true });
+  },
+
+  /* 生成家长/老师查看的只读分享链接 */
+  'POST /api/me/share': function (req, res, url, body, ctx) {
+    const u = ctx.user;
+    if (!u) return fail(res, 401, '未登录');
+    if (!u.shareToken) {
+      u.shareToken = db.token().slice(0, 24);
+      db.markDirty();
+    }
+    ok(res, { token: u.shareToken });
+  },
+
   /* 教师登录 */
   'POST /api/teacher/login': function (req, res, url, body) {
     const classCode = clean(body.classCode, 24);
@@ -458,8 +524,37 @@ const routes = {
   }
 };
 
+/** 只读成绩报告：/api/report/:token */
+function reportByToken(res, token) {
+  const s = state();
+  const u = s.users.find(function (x) { return x.shareToken === token; });
+  if (!u) return fail(res, 404, '链接已失效，请让同学重新生成');
+  const mine = s.sessions.filter(function (x) { return x.userId === u.id; });
+  const rows = s.users.filter(function (x) { return x.classCode === u.classCode; })
+    .map(function (x) { return userSummary(x, s.sessions); })
+    .sort(function (a, b) { return b.stars - a.stars || b.bestSpeed - a.bestSpeed; });
+  const rank = rows.findIndex(function (r) { return r.id === u.id; }) + 1;
+  const weak = (u.progress && u.progress.keyErrors) || {};
+  ok(res, {
+    user: { name: u.name, classCode: u.classCode },
+    summary: userSummary(u, s.sessions),
+    rank: rank,
+    classSize: rows.length,
+    weakKeys: Object.keys(weak).map(function (k) { return { key: k, count: weak[k] }; })
+      .sort(function (a, b) { return b.count - a.count; }).slice(0, 8),
+    sessions: mine.slice(-15).map(function (x) {
+      return { t: x.t, lessonId: x.lessonId, speed: x.speed, acc: x.acc, mode: x.mode };
+    })
+  });
+}
+
 /** 返回 true 表示已处理 */
 function handle(req, res, url) {
+  const m = url.pathname.match(/^\/api\/report\/([A-Za-z0-9]+)$/);
+  if (m && req.method === 'GET') {
+    reportByToken(res, m[1]);
+    return true;
+  }
   const key = req.method + ' ' + url.pathname;
   const fn = routes[key];
   if (!fn) {
@@ -484,4 +579,9 @@ function handle(req, res, url) {
   return true;
 }
 
-module.exports = { handle: handle, TEACHER_CODE: TEACHER_CODE, loadCourses: loadCourses };
+module.exports = {
+  handle: handle,
+  TEACHER_CODE: TEACHER_CODE,
+  loadCourses: loadCourses,
+  appData: appData
+};

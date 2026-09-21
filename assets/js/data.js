@@ -4,6 +4,11 @@ window.App = window.App || {};
 (function (App) {
   'use strict';
 
+  /* ---------- 内容包（packs.js，可能缺失则安全降级） ---------- */
+  var P = App.packs || {
+    poems: [], idioms: [], cnWords: {}, enVocab: {}, codeTexts: []
+  };
+
   /* ---------- 词库 ---------- */
   var WORDS = {
     three: 'cat dog sun pig cow bee fox ant owl hen box cup bag hat pen big run fly sky sea arm ear egg ice key map net oil toy zoo'.split(' '),
@@ -227,6 +232,139 @@ window.App = window.App || {};
     }
   ];
 
+  /* ================= 由 packs 生成的章节 ================= */
+
+  /* 古诗课：每课两首（不足则一首） */
+  function chapterPoems() {
+    var lessons = [];
+    for (var i = 0; i < P.poems.length; i += 2) {
+      var a = P.poems[i], b = P.poems[i + 1];
+      var title = '《' + a.t + '》' + (b ? '《' + b.t + '》' : '');
+      lessons.push({
+        id: 'l6-' + (lessons.length + 1),
+        title: '第' + (lessons.length + 1) + '课 ' + title,
+        type: 'zh',
+        text: a.s + (b ? b.s : ''),
+        length: 40,
+        target: { acc: 90, speed: 14 + Math.floor(lessons.length / 2) },
+        newKeys: [],
+        tips: (b ? a.a + '、' + b.a : a.a) + '的名诗，边打边背，一首诗很快就记牢了。'
+      });
+    }
+    return {
+      id: 'c6', title: '第六章 · 古诗与成语', emoji: '📜',
+      desc: '一边打字一边背古诗学成语，语文也跟着进步',
+      lessons: lessons
+    };
+  }
+
+  /* 成语课：按主题切段 */
+  function chapterIdioms() {
+    var groups = [
+      { name: '数字成语', from: 0, to: 9 },
+      { name: '写景成语', from: 10, to: 21 },
+      { name: '寓言成语', from: 22, to: 35 },
+      { name: '勤学成语', from: 36, to: 50 }
+    ];
+    var lessons = groups.map(function (g, i) {
+      var list = P.idioms.slice(g.from, g.to + 1);
+      var text = list.map(function (x) { return x.w; }).join('，') + '。';
+      return {
+        id: 'l6-i' + (i + 1),
+        title: '第' + (9 + i) + '课 成语·' + g.name,
+        type: 'zh',
+        text: text,
+        length: 40,
+        target: { acc: 90, speed: 15 + i },
+        newKeys: [],
+        tips: '打完想一想意思：' + list.slice(0, 3).map(function (x) { return x.w + '是' + x.m; }).join('；') + '。'
+      };
+    });
+    return lessons;
+  }
+
+  /* 英文分级词汇 + 中文词语 */
+  function chapterVocab() {
+    var lessons = [];
+    Object.keys(P.enVocab).forEach(function (theme, i) {
+      lessons.push({
+        id: 'l7-' + (i + 1),
+        title: '第' + (i + 1) + '课 ' + theme,
+        type: 'words',
+        words: P.enVocab[theme],
+        length: 70 + i * 2,
+        target: { acc: 92, speed: 32 + i * 2 },
+        newKeys: [],
+        tips: '小学英语最常用的「' + theme + '」主题词汇，拼写一起记。'
+      });
+    });
+    var cnThemes = Object.keys(P.cnWords);
+    ['量词', '家庭', '学校', '时间'].forEach(function (theme, i) {
+      if (cnThemes.indexOf(theme) < 0) return;
+      var words = P.cnWords[theme];
+      lessons.push({
+        id: 'l7-c' + (i + 1),
+        title: '第' + (lessons.length + 1) + '课 词语·' + theme + '（中文）',
+        type: 'zh',
+        text: words.join('，') + '。',
+        length: 45,
+        target: { acc: 90, speed: 16 + i },
+        newKeys: [],
+        tips: '中文用拼音输入法，尽量一次打一个词，比一个字一个字打更快。'
+      });
+    });
+    return {
+      id: 'c7', title: '第七章 · 分级词汇', emoji: '🔠',
+      desc: '小学英语主题词汇与中文常用词语，边打边记单词',
+      lessons: lessons
+    };
+  }
+
+  /* 实用符号与混合 */
+  function chapterCode() {
+    var picks = [
+      { name: '时间与日期', idx: [0, 1] },
+      { name: '邮箱与网址', idx: [2, 3] },
+      { name: '算式与数字', idx: [4, 5] },
+      { name: '地址与电话', idx: [6, 7, 8] }
+    ];
+    var lessons = picks.map(function (g, i) {
+      var text = g.idx.map(function (k) { return P.codeTexts[k] || ''; }).filter(Boolean).join(' ');
+      return {
+        id: 'l8-' + (i + 1),
+        title: '第' + (i + 1) + '课 ' + g.name,
+        type: 'text',
+        text: text,
+        length: Math.min(160, text.length),
+        target: { acc: 92, speed: 28 + i * 3 },
+        newKeys: [],
+        tips: '数字、冒号、斜杠、@ 都要用到，注意大小写和空格。'
+      };
+    });
+    lessons.push({
+      id: 'l8-5', title: '第5课 综合挑战', type: 'text',
+      text: P.codeTexts.join(' '),
+      length: 240,
+      target: { acc: 94, speed: 45 },
+      newKeys: [],
+      tips: '时间、算式、邮箱、网址一起来，这是最贴近真实打字的练习！'
+    });
+    return {
+      id: 'c8', title: '第八章 · 实用符号', emoji: '🔣',
+      desc: '数字、时间、邮箱、算式，这些才是真正用得到的打字',
+      lessons: lessons
+    };
+  }
+
+  // 追加新章节（内容来自 packs.js）
+  if (P.poems.length) {
+    var c6 = chapterPoems();
+    c6.lessons = c6.lessons.concat(chapterIdioms());
+    chapters.push(c6);
+  }
+  if (Object.keys(P.enVocab).length) chapters.push(chapterVocab());
+  if (P.codeTexts.length) chapters.push(chapterCode());
+
   /* ---------- 工具 ---------- */
   function rand(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
@@ -296,8 +434,107 @@ window.App = window.App || {};
     return out.join(' ');
   }
 
+  /* 智能特训文本：薄弱键占 70%，其余字母占 30% */
+  function buildSmartKeyText(weakKeys, len) {
+    var weak = (weakKeys && weakKeys.length ? weakKeys : 'asdfjkl;'.split(''));
+    var all = 'abcdefghijklmnopqrstuvwxyz'.split('');
+    var out = [], total = 0;
+    len = len || 80;
+    while (total < len) {
+      var n = 3 + Math.floor(Math.random() * 3);
+      var word = '';
+      for (var i = 0; i < n; i++) {
+        var pool = Math.random() < 0.7 ? weak : all;
+        word += rand(pool);
+      }
+      out.push(word);
+      total += word.length + 1;
+    }
+    return { text: out.join(' '), keys: weak };
+  }
+
+  /* 错词重练文本：错得越多出现越频繁 */
+  function buildWrongWordText(wrongWords, len) {
+    var words = (wrongWords && wrongWords.length ? wrongWords : WORDS.mix);
+    var pool = [];
+    words.forEach(function (w) {
+      var n = 1;
+      if (w && typeof w === 'object') { n = Math.max(1, Math.min(4, w.n || 1)); w = w.w; }
+      for (var i = 0; i < n; i++) pool.push(w);
+    });
+    if (!pool.length) pool = WORDS.mix;
+    var out = [], total = 0;
+    len = len || 80;
+    while (total < len && out.length < 60) {
+      var w = rand(pool);
+      if (w === out[out.length - 1]) continue;
+      out.push(w);
+      total += w.length + 1;
+    }
+    return out.join(' ');
+  }
+
+  /* 今日训练计划：3 个任务 */
+  function buildDailyPlan() {
+    var s = App.store ? App.store.get() : {};
+    var lessons = App.data ? App.data.lessons : [];
+    var tasks = [];
+
+    // 1. 继续下一节未通过的课
+    var next = null;
+    for (var i = 0; i < lessons.length; i++) {
+      var r = (s.lessons || {})[lessons[i].id];
+      if (!r || !r.passed) { next = lessons[i]; break; }
+    }
+    if (next) {
+      tasks.push({
+        icon: '📘', title: '新课：' + next.title,
+        desc: '目标 ' + next.target.speed + (next.type === 'zh' ? ' 字/分' : ' WPM'),
+        go: '#/practice/' + next.id, kind: 'lesson'
+      });
+    }
+
+    // 2. 薄弱键专项（有错键才出现）
+    var weak = App.store && App.store.topWeakKeys ? App.store.topWeakKeys(5) : [];
+    if (weak.length) {
+      tasks.push({
+        icon: '🎯', title: '薄弱键特训：' + weak.slice(0, 4).map(function (x) { return x.k; }).join(' '),
+        desc: '这几个键最容易按错，练 2 分钟就能明显改善',
+        go: '#/drill', kind: 'drill'
+      });
+    }
+
+    // 3. 错词复习
+    var ww = App.store && App.store.topWeakWords ? App.store.topWeakWords(8) : [];
+    if (ww.length) {
+      tasks.push({
+        icon: '🔁', title: '错词复习：' + ww.slice(0, 3).map(function (x) { return x.w; }).join(' / '),
+        desc: ww.length + ' 个词打错过，再看一眼就不容易错了',
+        go: '#/wrong', kind: 'wrong'
+      });
+    }
+
+    // 4. 保底：复习最近学过的课
+    if (tasks.length < 2) {
+      var done = lessons.filter(function (l) { var r = (s.lessons || {})[l.id]; return r && r.passed; });
+      if (done.length) {
+        var pick = done[done.length - 1];
+        tasks.push({
+          icon: '⭐', title: '复习：' + pick.title,
+          desc: '把通过的课再打一遍，争取拿到三星',
+          go: '#/practice/' + pick.id, kind: 'lesson'
+        });
+      }
+    }
+    if (!tasks.length) {
+      tasks.push({ icon: '🚀', title: '开始第一课', desc: '从定位键 F 和 J 出发', go: '#/practice/l1-1', kind: 'lesson' });
+    }
+    return tasks.slice(0, 3);
+  }
+
   /* 根据课程生成练习文本 */
   function buildText(lesson) {
+    if (lesson.fixedText) return lesson.fixedText;   // 智能特训 / 错词重练的定制文本
     switch (lesson.type) {
       case 'words': return buildWordsText(lesson);
       case 'sentence': return buildSentenceText(lesson);
@@ -345,6 +582,9 @@ window.App = window.App || {};
     tips: TIPS,
     buildText: buildText,
     buildTestText: buildTestText,
+    buildSmartKeyText: buildSmartKeyText,
+    buildWrongWordText: buildWrongWordText,
+    buildDailyPlan: buildDailyPlan,
     rand: rand,
     getLesson: function (id) {
       for (var i = 0; i < flat.length; i++) if (flat[i].id === id) return flat[i];

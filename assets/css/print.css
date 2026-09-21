@@ -1,0 +1,43 @@
+/* 打印 / 存成 PDF：只保留成绩单本体 */
+
+@media print {
+  @page { margin: 14mm; }
+
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  .topbar,
+  .footer,
+  .nav,
+  .top-actions,
+  .cloud-actions,
+  .report-cta,
+  .btn,
+  .game-mask,
+  .result-mask,
+  .seg,
+  .plan-row,
+  .entry-card { display: none !important; }
+
+  .container { max-width: 100%; padding: 0; }
+
+  .card {
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+    background: #fff !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 10px;
+  }
+
+  .report-card { border: 2px solid #333 !important; }
+
+  .stat-card b, .hl { color: #000 !important; }
+  .muted { color: #666 !important; }
+
+  h1, h2, h3 { color: #000 !important; }
+
+  canvas { max-width: 100%; }
+}

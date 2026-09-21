@@ -181,6 +181,32 @@ window.App = window.App || {};
           function (e) { self.token = old; throw e; });
     },
 
+    /* ---------- 分享与成绩单 ---------- */
+    share: function () { return this.request('/api/me/share', { method: 'POST' }); },
+    report: function (token) { return this.request('/api/report/' + encodeURIComponent(token)); },
+
+    /* ---------- 实时 PK ---------- */
+    pkCreate: function () { return this.request('/api/pk/create', { method: 'POST' }); },
+    pkJoin: function (code) {
+      return this.request('/api/pk/join', { method: 'POST', body: { code: code } });
+    },
+    pkStart: function (code) {
+      return this.request('/api/pk/start', { method: 'POST', body: { code: code } });
+    },
+    pkProgress: function (code, p) {
+      return this.request('/api/pk/progress', {
+        method: 'POST',
+        body: { code: code, index: p.index, speed: p.speed, acc: p.acc, finished: !!p.finished }
+      });
+    },
+    pkLeave: function (code) {
+      return this.request('/api/pk/leave', { method: 'POST', body: { code: code } });
+    },
+    pkStream: function (code) {
+      return new EventSource((this.base || '') + '/api/pk/stream?code=' + encodeURIComponent(code) +
+        '&token=' + encodeURIComponent(this.token || ''));
+    },
+
     teacherResetPassword: function (classCode, name) {
       return this.request('/api/teacher/reset-password', {
         method: 'POST', body: { classCode: classCode, name: name }

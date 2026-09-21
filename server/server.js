@@ -6,12 +6,14 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 const db = require('./lib/db');
 const api = require('./lib/api');
 
 const ROOT = path.join(__dirname, '..');
 const START_PORT = parseInt(process.env.DAZI_PORT || arg('--port') || '5173', 10);
 const MAX_PORT = START_PORT + 10;
+const HOST = process.env.DAZI_HOST || arg('--host') || '127.0.0.1';
 
 function arg(name) {
   const i = process.argv.indexOf(name);
@@ -46,6 +48,8 @@ function safeJoin(root, urlPath) {
   return full;
 }
 
+const GZIP_EXT = ['.html', '.js', '.css', '.json', '.svg', '.txt'];
+
 function serveStatic(req, res, url) {
   let p = url.pathname;
   if (p === '/' || p === '') p = '/index.html';
@@ -57,11 +61,23 @@ function serveStatic(req, res, url) {
       return res.end('404 Not Found: ' + p);
     }
     const ext = path.extname(file).toLowerCase();
-    res.writeHead(200, {
-      'Content-Type': MIME[ext] || 'application/octet-stream',
-      'Content-Length': st.size,
-      'Cache-Control': 'no-cache'
-    });
+    const type = MIME[ext] || 'application/octet-stream';
+    const headers = {
+      'Content-Type': type,
+      'Cache-Control': 'no-cache',
+      'Last-Modified': st.mtime.toUTCString()
+    };
+    // 文本资源用 gzip 压缩（机房几十人同时加载更省带宽）
+    const canZip = GZIP_EXT.indexOf(ext) >= 0 && st.size > 1024 &&
+      (req.headers['accept-encoding'] || '').indexOf('gzip') >= 0;
+    if (canZip) {
+      headers['Content-Encoding'] = 'gzip';
+      headers.Vary = 'Accept-Encoding';
+      res.writeHead(200, headers);
+      return fs.createReadStream(file).pipe(zlib.createGzip()).pipe(res);
+    }
+    headers['Content-Length'] = st.size;
+    res.writeHead(200, headers);
     fs.createReadStream(file).pipe(res);
   });
 }
@@ -78,6 +94,11 @@ const server = http.createServer(function (req, res) {
   }
 
   if (url.pathname.indexOf('/api/') === 0) {
+    // 实时 PK 的 SSE 长连接单独处理
+    if (url.pathname === '/api/pk/stream') {
+      return require('./lib/pk').stream(req, res,
+        url.searchParams.get('code'), url.searchParams.get('token'));
+    }
     if (!api.handle(req, res, url)) return; // 未匹配由 api 内部返回 404
     return;
   }
@@ -94,13 +115,14 @@ function listen(port) {
       process.exit(1);
     }
   });
-  server.listen(port, '127.0.0.1', function () {
+  server.listen(port, HOST, function () {
     const s = db.get();
     const lines = [
       '',
       '  ⌨️  打字小英雄 · 服务已启动',
       '  ─────────────────────────────',
       '  网址： http://localhost:' + port,
+      '  监听： ' + HOST + ':' + port + (HOST === '0.0.0.0' ? '（局域网可访问）' : '（仅本机）'),
       '  数据： ' + db.path,
       '  学生： ' + s.users.length + ' 人，班级 ' + Object.keys(s.classes || {}).length + ' 个',
       '  教师口令：' + api.TEACHER_CODE,

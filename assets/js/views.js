@@ -48,7 +48,8 @@ window.App = window.App || {};
     var html = '';
     html += '<section class="hero">' +
       '<div class="hero-text">' +
-      '<h1>打字小英雄 <span class="hero-badge">⌨️</span></h1>' +
+      '<div class="hero-mascot">' + mascotSvg() +
+      '<h1>打字小英雄</h1></div>' +
       '<p>每天 10 分钟，跟着课程闯关，让你的手指在键盘上飞起来！</p>' +
       '<div class="hero-actions">' +
       '<button class="btn btn-primary btn-lg" data-go="#/practice/' + last.id + '">继续学习：' + esc(last.title) + '</button>' +
@@ -68,9 +69,21 @@ window.App = window.App || {};
 
     html += '<div class="grid-3">' +
       '<button class="entry-card" data-go="#/courses"><span class="ic">🗺️</span><b>课程地图</b><i>5 章 34 课，从键位到实战</i></button>' +
+      '<button class="entry-card" data-go="#/pk"><span class="ic">⚔️</span><b>实时对战</b><i>和同学同打一篇文章，看谁更快</i></button>' +
+      '<button class="entry-card" data-go="#/drill"><span class="ic">🎯</span><b>智能特训</b><i>专练你最容易按错的键</i></button>' +
       '<button class="entry-card" data-go="#/game"><span class="ic">🎮</span><b>键位挑战</b><i>字母雨小游戏，越玩越快</i></button>' +
       '<button class="entry-card" data-go="#/stats"><span class="ic">📊</span><b>学习报告</b><i>看看进步曲线和薄弱键位</i></button>' +
       '</div>';
+
+    // 今日训练计划
+    var plan = store.plan();
+    html += '<div class="card mt plan-card"><h3>📅 今日计划</h3><div class="plan-row">';
+    plan.forEach(function (t) {
+      html += '<button class="plan-item" data-go="' + t.go + '">' +
+        '<span class="ic">' + t.icon + '</span>' +
+        '<b>' + esc(t.title) + '</b><i>' + esc(t.desc) + '</i></button>';
+    });
+    html += '</div></div>';
 
     html += '<div class="grid-2 mt">' +
       '<div class="card"><h3>今日战绩</h3><div class="stat-row">' +
@@ -103,6 +116,28 @@ window.App = window.App || {};
     App._mount = function (root) { bindCloud(root); };
     return html;
   };
+
+  /* 吉祥物：一只抱着键盘的小猫 */
+  function mascotSvg() {
+    return '<svg class="mascot" viewBox="0 0 100 100" aria-hidden="true">' +
+      '<ellipse cx="50" cy="92" rx="30" ry="5" fill="rgba(0,0,0,.08)"/>' +
+      '<path d="M22 38 L18 14 L40 26 Z" fill="#ff7a45"/>' +
+      '<path d="M78 38 L82 14 L60 26 Z" fill="#ff7a45"/>' +
+      '<circle cx="50" cy="48" r="32" fill="#ffd8a8"/>' +
+      '<circle cx="50" cy="48" r="32" fill="none" stroke="#f59f00" stroke-width="2"/>' +
+      '<circle cx="38" cy="44" r="5" fill="#2f3542"/>' +
+      '<circle cx="62" cy="44" r="5" fill="#2f3542"/>' +
+      '<circle cx="39.5" cy="42.5" r="1.6" fill="#fff"/>' +
+      '<circle cx="63.5" cy="42.5" r="1.6" fill="#fff"/>' +
+      '<path d="M44 58 Q50 64 56 58" stroke="#2f3542" stroke-width="3" fill="none" stroke-linecap="round"/>' +
+      '<rect x="26" y="74" width="48" height="18" rx="5" fill="#4dabf7"/>' +
+      '<rect x="31" y="78" width="6" height="5" rx="1.5" fill="#fff"/>' +
+      '<rect x="40" y="78" width="6" height="5" rx="1.5" fill="#fff"/>' +
+      '<rect x="49" y="78" width="6" height="5" rx="1.5" fill="#fff"/>' +
+      '<rect x="58" y="78" width="6" height="5" rx="1.5" fill="#fff"/>' +
+      '<rect x="36" y="85" width="28" height="4" rx="2" fill="#fff"/>' +
+      '</svg>';
+  }
 
   /* 云端账号卡片（登录状态 / 离线提示） */
   function cloudCardHtml() {
@@ -162,6 +197,49 @@ window.App = window.App || {};
     };
   }
 
+  /* 闯关地图：一条折线串起本章所有课 */
+  function mapHtml(ch) {
+    var n = ch.lessons.length;
+    var w = Math.max(620, n * 96 + 80);
+    var h = 170;
+    var pts = [];
+    for (var i = 0; i < n; i++) {
+      pts.push({
+        x: 50 + i * (n > 8 ? 92 : 110),
+        y: 60 + (i % 3) * 38,
+        i: i
+      });
+    }
+    if (pts.length) w = Math.max(w, pts[pts.length - 1].x + 60);
+    var d = pts.map(function (p, i) { return (i ? 'L' : 'M') + p.x + ' ' + p.y; }).join(' ');
+
+    var doneCount = 0;
+    ch.lessons.forEach(function (ls) { if (store.lesson(ls.id).passed) doneCount++; });
+
+    var s = '<svg class="map" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="xMinYMid meet">' +
+      '<path class="map-path" d="' + d + '"></path>' +
+      '<path class="map-path done" d="' + d + '" style="stroke-dasharray:' +
+      (pts.length > 1 ? Math.round(doneCount / (pts.length - 1) * w) : 0) + ' ' + w + '"></path>';
+
+    pts.forEach(function (p) {
+      var ls = ch.lessons[p.i];
+      var r = store.lesson(ls.id);
+      var unlocked = store.unlocked(ls.id);
+      var cls = 'map-node ' + (r.passed ? 'done' : unlocked ? 'open' : 'locked');
+      if (unlocked && !r.passed) cls += ' current';
+      var label = r.passed ? '★' : unlocked ? String(p.i + 1) : '🔒';
+      s += '<g class="' + cls + '"' + (unlocked ? ' data-go="#/practice/' + ls.id + '"' : '') + '>' +
+        '<circle cx="' + p.x + '" cy="' + p.y + '" r="22"></circle>' +
+        '<text x="' + p.x + '" y="' + p.y + '">' + label + '</text>' +
+        '<text class="map-tip" x="' + p.x + '" y="' + (p.y + 38) + '">' +
+        esc(ls.title.replace(/^第\d+课\s*/, '').slice(0, 6)) + '</text>' +
+        (unlocked ? '<title>' + esc(ls.title) + '</title>' : '') +
+        '</g>';
+    });
+    s += '</svg>';
+    return s;
+  }
+
   /* ================= 课程地图 ================= */
   views.courses = function () {
     var html = '<div class="page-head"><h2>🗺️ 课程地图</h2>' +
@@ -175,6 +253,8 @@ window.App = window.App || {};
         '<div class="ch-prog"><div class="bar sm"><i style="width:' + Math.round(p.ratio * 100) + '%"></i></div>' +
         '<span>' + p.done + ' / ' + p.total + '</span></div></header>' +
         '<div class="lesson-grid">';
+
+      html += '<div class="map-wrap">' + mapHtml(ch) + '</div>';
 
       ch.lessons.forEach(function (ls) {
         var r = store.lesson(ls.id);
@@ -197,14 +277,16 @@ window.App = window.App || {};
   /* ================= 练习页 ================= */
   views.practice = function (params) {
     var id = params[0];
-    var lesson = data.getLesson(id);
+    var lesson = id === 'drill' ? buildDrillLesson()
+      : id === 'wrong' ? buildWrongLesson()
+        : data.getLesson(id);
     if (!lesson) return '<div class="card"><p>找不到这节课</p><button class="btn" data-go="#/courses">返回课程</button></div>';
 
     var isZh = lesson.type === 'zh';
     var text = data.buildText(lesson);
     var py = (isZh && store.settings().pinyin) ? data.pinyinList(lesson) : null;
     var record = store.lesson(id);
-    var next = store.nextLesson(id);
+    var next = data.getLesson(id) ? store.nextLesson(id) : null;   // 特训/错词课没有"下一课"
 
     var html = '<div class="practice">' +
       '<div class="pr-head">' +
@@ -251,12 +333,17 @@ window.App = window.App || {};
         kb.mount(root.querySelector('#kb'));
         kb.highlightKeys((lesson.newKeys && lesson.newKeys.length ? lesson.newKeys : (lesson.keys || '').split('')));
       }
+      if (!text || !text.length) {
+        box.innerHTML = '<p class="muted">暂时没有可练习的内容，先去课程里练几课，系统就能生成针对你的练习啦。</p>';
+      }
 
       function upd(st) {
         root.querySelector('#mTime').textContent = fmtTime(st.elapsed);
         root.querySelector('#mSpeed').textContent = Math.round(st.speed);
         root.querySelector('#mAcc').textContent = Math.round(st.acc) + '%';
-        root.querySelector('#mCombo').textContent = st.combo;
+        var cm = root.querySelector('#mCombo');
+        cm.textContent = st.combo;
+        cm.parentNode.classList.toggle('hot', st.combo >= 10);
         root.querySelector('#mErr').textContent = st.errors;
         root.querySelector('#prBar').style.width = Math.round(st.index / st.total * 100) + '%';
       }
@@ -272,9 +359,11 @@ window.App = window.App || {};
       function showResult(res) {
         var st = computeStars(res);
         var passed = res.acc >= lesson.target.acc && res.speed >= lesson.target.speed * 0.8;
+        var real = !!data.getLesson(lesson.id);   // 特训/错词不计入课程星星
         store.record({
           lessonId: lesson.id, mode: isZh ? 'zh' : 'en', speed: res.speed,
-          acc: res.acc, chars: res.chars, ms: res.ms, stars: st, passed: passed
+          acc: res.acc, chars: res.chars, ms: res.ms,
+          stars: real ? st : 0, passed: real ? passed : false
         });
         App.sound.win();
 
@@ -282,6 +371,7 @@ window.App = window.App || {};
         var ci = res.acc >= 98 ? 3 : (res.speed >= lesson.target.speed ? 2 : (res.acc >= 90 ? 1 : 0));
 
         var h = '<div class="result-card card">' +
+          '<canvas class="confetti" id="confetti"></canvas>' +
           '<h2>' + (passed ? '🎉 闯关成功！' : '💪 完成练习') + '</h2>' +
           '<div class="big-stars">' + stars(st) + '</div>' +
           '<p class="result-comment">' + comments[ci] + '</p>' +
@@ -302,6 +392,8 @@ window.App = window.App || {};
           '</div></div>';
         mask.innerHTML = h;
         mask.hidden = false;
+        var cf = mask.querySelector('#confetti');
+        if (cf && App.charts) App.charts.confetti(cf, 2200);
         root.querySelector('#rAgain').onclick = function () { location.reload(); };
         root.querySelector('#rBack').onclick = function () { go('#/courses'); };
         if (next) root.querySelector('#rNext').onclick = function () { go('#/practice/' + next.id); };
@@ -593,6 +685,123 @@ window.App = window.App || {};
     return html;
   };
 
+  /* ================= 成绩单（可打印 / 可分享） ================= */
+  function reportHtml(d, shared) {
+    var s = d.summary;
+    var h = '<h3>' + esc(d.user.name) + ' 的打字成绩单' + (d.user.classCode ? ' · ' + esc(d.user.classCode) : '') + '</h3>';
+    h += '<div class="grid-4">' +
+      '<div class="card stat-card"><b>' + s.stars + '</b><span>星星</span></div>' +
+      '<div class="card stat-card"><b>' + s.bestSpeed + '</b><span>最高速度</span></div>' +
+      '<div class="card stat-card"><b>' + s.avgAcc + '%</b><span>平均准确率</span></div>' +
+      '<div class="card stat-card"><b>' + Math.round(s.totalMs / 60000) + '</b><span>练习分钟</span></div>' +
+      '</div>';
+    if (d.rank) {
+      h += '<p class="mt">班级排名：<b class="hl">第 ' + d.rank + ' 名</b> / 共 ' + d.classSize + ' 位同学 · 通过 ' + s.passed + ' 门课 · 练习 ' + s.sessions + ' 次</p>';
+    }
+    if (d.weakKeys && d.weakKeys.length) {
+      h += '<div class="card mt"><h3>需要加强的键位</h3><div class="chips">' +
+        d.weakKeys.map(function (w) {
+          return '<span class="chip">' + esc(w.key === ' ' ? '空格' : w.key) + '<i>' + w.count + '</i></span>';
+        }).join('') + '</div></div>';
+    }
+    if (d.sessions && d.sessions.length) {
+      h += '<div class="card mt"><h3>最近练习</h3><ul class="recent">' +
+        d.sessions.slice().reverse().map(function (x) {
+          var l = data.getLesson(x.lessonId);
+          return '<li><span class="t">' + esc(l ? l.title : '自由练习') + '</span>' +
+            '<span class="v">' + x.speed + ' <i>' + (x.mode === 'zh' ? '字/分' : 'WPM') + '</i></span>' +
+            '<span class="a">' + x.acc + '%</span></li>';
+        }).join('') + '</ul></div>';
+    }
+    if (!shared) {
+      h += '<div class="cloud-actions mt">' +
+        '<button class="btn btn-primary" id="rpShare">生成家长查看链接</button>' +
+        '<button class="btn btn-soft" id="rpPrint">打印 / 存成 PDF</button>' +
+        '<button class="btn btn-ghost" id="rpBack">返回</button></div>' +
+        '<p class="muted mt" id="rpLink"></p>';
+    } else {
+      h += '<p class="muted mt">这是只读页面，数据来自 ' + (new Date()).toLocaleDateString('zh-CN') + ' 的同步记录。</p>';
+    }
+    return h;
+  }
+
+  views.report = function () {
+    var s = store.get();
+    var ov = store.overall();
+    var days = s.days || {};
+    var html = '<div class="page-head"><h2>📄 我的成绩单</h2>' +
+      '<p class="muted">可以直接打印或存成 PDF，也可以生成链接发给爸爸妈妈查看。</p></div>' +
+      '<div class="card report-card" id="reportBody">' +
+      reportHtml({
+        user: { name: App.api.user ? App.api.user.name : (s.profile && s.profile.name) || '我', classCode: App.api.user ? App.api.user.classCode : '' },
+        summary: {
+          stars: ov.stars, bestSpeed: Math.round(ov.best), avgAcc: Math.round(ov.avgAcc),
+          totalMs: ov.totalMs, passed: ov.passed, sessions: ov.count
+        },
+        weakKeys: store.topWeakKeys(8).map(function (x) { return { key: x.k, count: x.n }; }),
+        sessions: (s.sessions || []).slice(-15)
+      }, false) +
+      '</div>' +
+      '<div class="grid-2 mt">' +
+      '<div class="card"><h3>练习日历</h3><canvas id="calCanvas"></canvas></div>' +
+      '<div class="card"><h3>速度成长曲线</h3><canvas id="lineCanvas"></canvas></div>' +
+      '</div>' +
+      '<div class="card mt"><h3>键盘热力图</h3><canvas id="heatCanvas"></canvas></div>';
+
+    App._mount = function (root) {
+      App.charts.calendar(root.querySelector('#calCanvas'), days);
+      App.charts.line(root.querySelector('#lineCanvas'), s.sessions || []);
+      App.charts.keyboardHeat(root.querySelector('#heatCanvas'), s.keyErrors || {});
+
+      root.querySelector('#rpPrint').onclick = function () { window.print(); };
+      root.querySelector('#rpBack').onclick = function () { location.hash = '#/stats'; };
+      root.querySelector('#rpShare').onclick = function () {
+        var out = root.querySelector('#rpLink');
+        if (!App.api.online) { out.textContent = '服务器未连接，请先运行 dazi。'; return; }
+        App.api.share().then(function (d) {
+          var url = location.origin + location.pathname + '#/r/' + d.token;
+          if (location.protocol === 'file:') url = App.api.base + '/#/r/' + d.token;
+          out.innerHTML = '家长查看链接：<b>' + url + '</b>（点右侧复制）';
+          var btn = document.createElement('button');
+          btn.className = 'btn btn-ghost';
+          btn.textContent = '复制链接';
+          btn.onclick = function () {
+            var ta = document.createElement('textarea');
+            ta.value = url;
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); btn.textContent = '已复制 ✓'; } catch (e) { /* ignore */ }
+            document.body.removeChild(ta);
+          };
+          out.appendChild(btn);
+        }).catch(function (e) { out.textContent = '生成失败：' + e.message; });
+      };
+    };
+    return html;
+  };
+
+  /* 家长/老师只读查看：#/r/:token */
+  views.share = function (params) {
+    var token = params && params[0];
+    var html = '<div class="page-head"><h2>👀 学习报告</h2>' +
+      '<p class="muted">这是同学分享出来的只读成绩单。</p></div>' +
+      '<div class="card" id="shareBody"><p class="muted">加载中…</p></div>';
+    App._mount = function (root) {
+      var body = root.querySelector('#shareBody');
+      if (!App.api.online) {
+        body.innerHTML = '<p class="muted">无法连接服务器，请在终端运行 dazi 后刷新页面。</p>';
+        return;
+      }
+      App.api.report(token).then(function (d) {
+        body.innerHTML = reportHtml(d, true);
+      }).catch(function (e) {
+        body.innerHTML = '<p class="muted">加载失败：' + esc(e.message) + '</p>';
+      });
+    };
+    return html;
+  };
+  views.r = views.share;
+
   /* ================= 学习报告 ================= */
   views.stats = function () {
     var s = store.get();
@@ -609,12 +818,20 @@ window.App = window.App || {};
       '<div class="card stat-card"><b>' + Math.round(ov.avgAcc) + '%</b><span>平均准确率</span></div>' +
       '</div>';
 
+    html += '<div class="card report-cta">' +
+      '<div><h3>📄 我的成绩单</h3><p class="muted">一键生成可打印的成绩单，或生成链接给家长查看。</p></div>' +
+      '<button class="btn btn-primary" data-go="#/report">打开成绩单</button></div>';
+
     html += '<div class="grid-2 mt">' +
       '<div class="card"><h3>速度进步曲线</h3>' +
-      (recent.length ? '<canvas id="chart" width="520" height="240"></canvas>'
-        : '<p class="muted">还没有数据，去练习一课吧！</p>') +
+      (recent.length ? '<canvas id="chart"></canvas>' : '<p class="muted">还没有数据，去练习一课吧！</p>') +
       '</div>' +
       '<div class="card"><h3>需要加强的键位</h3>' + weakKeysHtml() + '</div>' +
+      '</div>';
+
+    html += '<div class="grid-2 mt">' +
+      '<div class="card"><h3>练习日历</h3><canvas id="calCanvas"></canvas></div>' +
+      '<div class="card"><h3>键盘热力图</h3><canvas id="heatCanvas"></canvas></div>' +
       '</div>';
 
     html += '<div class="card mt"><h3>各章进度</h3>';
@@ -637,7 +854,9 @@ window.App = window.App || {};
       '</div></div>';
 
     App._mount = function (root) {
-      if (recent.length) drawChart(root.querySelector('#chart'), recent);
+      if (recent.length) App.charts.line(root.querySelector('#chart'), recent);
+      App.charts.calendar(root.querySelector('#calCanvas'), s.days || {});
+      App.charts.keyboardHeat(root.querySelector('#heatCanvas'), s.keyErrors || {});
       root.querySelector('#setSound').onchange = function () { store.setSetting('sound', this.checked); };
       root.querySelector('#setKb').onchange = function () { store.setSetting('keyboard', this.checked); };
       root.querySelector('#setPy').onchange = function () { store.setSetting('pinyin', this.checked); };
@@ -676,15 +895,30 @@ window.App = window.App || {};
 
   function achievementsHtml() {
     var s = store.get(), ov = store.overall();
+    var passedChapters = data.chapters.filter(function (c) {
+      return store.chapterProgress(c).ratio >= 1;
+    }).length;
+    var zhCount = (s.sessions || []).filter(function (x) { return x.mode === 'zh'; }).length;
+    var star3 = 0;
+    Object.keys(s.lessons || {}).forEach(function (k) { if (s.lessons[k].stars >= 3) star3++; });
+
     var list = [
       { ic: '🌱', name: '初次上手', desc: '完成第一次练习', got: ov.count >= 1 },
       { ic: '🔟', name: '十次练习', desc: '累计练习 10 次', got: ov.count >= 10 },
+      { ic: '💯', name: '百次练习', desc: '累计练习 100 次', got: ov.count >= 100 },
       { ic: '⭐', name: '星星收藏家', desc: '累计获得 30 颗星', got: ov.stars >= 30 },
+      { ic: '🌟', name: '满天星', desc: '累计获得 100 颗星', got: ov.stars >= 100 },
       { ic: '🚀', name: '速度新秀', desc: '任意一课达到 30 WPM', got: ov.best >= 30 },
+      { ic: '✈️', name: '飞速少年', desc: '任意一课达到 60 WPM', got: ov.best >= 60 },
       { ic: '🎯', name: '百发百中', desc: '一次练习准确率 100%', got: s.sessions.some(function (x) { return x.acc >= 100; }) },
       { ic: '⌨️', name: '键位达人', desc: '第一章全部通过', got: store.chapterProgress(data.chapters[0]).ratio >= 1 },
+      { ic: '🏅', name: '通关一章', desc: '任意一章全部通过', got: passedChapters >= 1 },
+      { ic: '👑', name: '全部学完', desc: '所有章节全部通过', got: passedChapters === data.chapters.length },
       { ic: '🔥', name: '坚持三天', desc: '连续练习 3 天', got: store.streak() >= 3 },
-      { ic: '🏆', name: '游戏高手', desc: '键位挑战拿到 500 分', got: (s.game.best || 0) >= 500 }
+      { ic: '📅', name: '坚持一周', desc: '连续练习 7 天', got: store.streak() >= 7 },
+      { ic: '🏆', name: '游戏高手', desc: '键位挑战拿到 500 分', got: (s.game.best || 0) >= 500 },
+      { ic: '🈶', name: '中文小能手', desc: '完成 10 次中文练习', got: zhCount >= 10 },
+      { ic: '🥇', name: '完美主义', desc: '拿到 10 个三星课程', got: star3 >= 10 }
     ];
     return list.map(function (a) {
       return '<div class="ach' + (a.got ? ' got' : '') + '"><span class="ic">' + a.ic + '</span>' +
@@ -692,60 +926,347 @@ window.App = window.App || {};
     }).join('');
   }
 
-  function drawChart(cv, list) {
-    var c = cv.getContext('2d');
-    var w = cv.width, h = cv.height;
-    var pad = 34;
-    c.clearRect(0, 0, w, h);
-    var max = Math.max.apply(null, list.map(function (x) { return x.speed; }));
-    max = Math.max(20, Math.ceil(max / 10) * 10);
 
-    c.strokeStyle = getComputedStyle(document.body).getPropertyValue('--line') || '#e9ecef';
-    c.fillStyle = getComputedStyle(document.body).getPropertyValue('--muted') || '#868e96';
-    c.font = '12px system-ui';
-    c.textAlign = 'right';
-    for (var i = 0; i <= 4; i++) {
-      var y = pad + (h - pad * 2) * i / 4;
-      c.beginPath();
-      c.moveTo(pad, y);
-      c.lineTo(w - 10, y);
-      c.stroke();
-      c.fillText(Math.round(max * (1 - i / 4)), pad - 6, y + 4);
+  /* ================= 智能特训 / 错词本 ================= */
+
+  /* 智能特训课：用你最常按错的键生成练习 */
+  function buildDrillLesson() {
+    var weak = store.topWeakKeys(5);
+    var keys = weak.map(function (x) { return x.k; });
+    var r = data.buildSmartKeyText(keys, 90);
+    return {
+      id: 'drill', title: '智能特训 · 薄弱键', chapterTitle: '智能训练',
+      type: 'keys', keys: r.keys.join(''), mix: '', fixedText: r.text,
+      length: 90,
+      target: { acc: 92, speed: 30 },
+      newKeys: keys,
+      tips: keys.length
+        ? '这几个键你最容易按错，练习里它们占 70%，连打两遍就会顺手很多。'
+        : '还没有发现薄弱键位，先随便练一课吧！'
+    };
+  }
+
+  /* 错词重练课：把打错的单词重新排一遍 */
+  function buildWrongLesson() {
+    var ww = store.topWeakWords(20);
+    var r = data.buildWrongWordText(ww.map(function (x) { return { w: x.w, n: x.n }; }), 90);
+    return {
+      id: 'wrong', title: '错词重练', chapterTitle: '错词本',
+      type: 'words', words: ww.length ? ww.map(function (x) { return x.w; }) : data.words.mix,
+      fixedText: ww.length ? r : '',
+      length: 90,
+      target: { acc: 92, speed: 32 },
+      newKeys: [],
+      tips: '这些词你以前打错过，放慢一点，把每个字母想清楚再敲。'
+    };
+  }
+
+  views.drill = function () {
+    var weak = store.topWeakKeys(8);
+    var ww = store.topWeakWords(8);
+    var html = '<div class="page-head"><h2>🎯 智能特训</h2>' +
+      '<p class="muted">系统会盯着你最容易按错的键和最容易打错的词，自动生成只属于你的练习。</p></div>';
+
+    html += '<div class="grid-2">' +
+      '<div class="card"><h3>最容易按错的键</h3>';
+    if (!weak.length) {
+      html += '<p class="muted">太棒了，还没有出错的键！先去课程里练几课，系统会持续跟踪。</p>';
+    } else {
+      var max = weak[0].n;
+      html += '<ul class="weak">';
+      weak.forEach(function (x) {
+        html += '<li><span class="wk">' + esc(x.k === ' ' ? '空格' : x.k) + '</span>' +
+          '<div class="bar sm"><i class="bad-bar" style="width:' + Math.round(x.n / max * 100) + '%"></i></div>' +
+          '<b>' + x.n + ' 次</b></li>';
+      });
+      html += '</ul>';
+    }
+    html += '</div>';
+
+    html += '<div class="card"><h3>错词本</h3>';
+    if (!ww.length) {
+      html += '<p class="muted">还没有错词记录。打错的单词/汉字会自动收进这里。</p>';
+    } else {
+      html += '<div class="chips">';
+      ww.forEach(function (x) {
+        html += '<span class="chip">' + esc(x.w) + '<i>' + x.n + '</i></span>';
+      });
+      html += '</div><p class="muted mt">错得越多，在错词重练里出现得越频繁。</p>';
+    }
+    html += '</div></div>';
+
+    html += '<div class="card mt"><h3>开始训练</h3><div class="cloud-actions">' +
+      '<button class="btn btn-primary" id="dStart"' + (weak.length ? '' : ' disabled') + '>开始薄弱键特训</button>' +
+      '<button class="btn btn-soft" id="wStart"' + (ww.length ? '' : ' disabled') + '>错词重练</button>' +
+      '<button class="btn btn-ghost" data-go="#/wrong">管理错词本</button>' +
+      '</div>' +
+      '<p class="muted mt">小提示：特训文本每次都会重新生成，连打 2~3 遍效果最好。</p></div>';
+
+    App._mount = function (root) {
+      var a = root.querySelector('#dStart');
+      if (a) a.onclick = function () { location.hash = '#/practice/drill'; };
+      var b = root.querySelector('#wStart');
+      if (b) b.onclick = function () { location.hash = '#/practice/wrong'; };
+      var c = root.querySelector('[data-go]');
+      if (c) c.onclick = function () { location.hash = this.getAttribute('data-go'); };
+    };
+    return html;
+  };
+
+  views.wrong = function () {
+    var en = store.topWeakWords(100);
+    var zh = Object.keys(store.mistakes('zh')).map(function (k) {
+      return { w: k, n: store.mistakes('zh')[k] };
+    }).sort(function (a, b) { return b.n - a.n; });
+
+    var html = '<div class="page-head"><h2>📕 错词本</h2>' +
+      '<p class="muted">打错的单词、汉字都会自动收进来。复习一遍再重练，进步最快。</p></div>';
+
+    function list(items, title, kind) {
+      var h = '<div class="card mt"><h3>' + title + '（' + items.length + '）</h3>';
+      if (!items.length) return h + '<p class="muted">暂无记录</p></div>';
+      h += '<div class="chips">';
+      items.slice(0, 60).forEach(function (x) {
+        h += '<span class="chip">' + esc(x.w) + '<i>' + x.n + '</i></span>';
+      });
+      h += '</div><div class="cloud-actions">' +
+        '<button class="btn btn-primary" data-practice="' + kind + '">重练这些</button>' +
+        '<button class="btn btn-danger" data-clear="' + kind + '">清空</button></div></div>';
+      return h;
     }
 
-    var step = (w - pad - 14) / Math.max(1, list.length - 1);
-    var pts = list.map(function (x, i) {
-      return { x: pad + step * i, y: pad + (h - pad * 2) * (1 - x.speed / max) };
-    });
+    html += list(en, '英文错词', 'en');
+    html += list(zh, '中文错句', 'zh');
 
-    var grad = c.createLinearGradient(0, pad, 0, h - pad);
-    grad.addColorStop(0, 'rgba(255,122,69,.35)');
-    grad.addColorStop(1, 'rgba(255,122,69,0)');
-    c.beginPath();
-    c.moveTo(pts[0].x, h - pad);
-    pts.forEach(function (p) { c.lineTo(p.x, p.y); });
-    c.lineTo(pts[pts.length - 1].x, h - pad);
-    c.closePath();
-    c.fillStyle = grad;
-    c.fill();
+    App._mount = function (root) {
+      var ps = root.querySelectorAll('[data-practice]');
+      for (var i = 0; i < ps.length; i++) {
+        ps[i].onclick = function () {
+          if (this.getAttribute('data-practice') === 'zh') {
+            // 中文错句重练：直接进中文课
+            location.hash = '#/practice/l4-5';
+          } else {
+            location.hash = '#/practice/wrong';
+          }
+        };
+      }
+      var cs = root.querySelectorAll('[data-clear]');
+      for (var j = 0; j < cs.length; j++) {
+        cs[j].onclick = function () {
+          if (!confirm('确定清空这部分的错词记录吗？')) return;
+          store.clearMistakes(this.getAttribute('data-clear') === 'zh' ? 'zh' : 'en');
+          App.rerender();
+        };
+      }
+    };
+    return html;
+  };
 
-    c.beginPath();
-    pts.forEach(function (p, i) { i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y); });
-    c.strokeStyle = '#ff7a45';
-    c.lineWidth = 3;
-    c.lineJoin = 'round';
-    c.stroke();
+  /* ================= 实时 PK ================= */
+  views.pk = function () {
+    var html = '<div class="page-head"><h2>⚔️ 实时对战</h2>' +
+      '<p class="muted">和同学比一比：一方创建房间拿到 4 位房间码，另一方输入房间码加入，同一篇文章同时开打。</p></div>' +
+      '<div class="card"><div id="pkBody">' +
+      '<div class="pk-join">' +
+      '<button class="btn btn-primary" id="pkCreate">创建房间</button>' +
+      '<div class="pk-or">或</div>' +
+      '<div class="pk-input">' +
+      '<input id="pkCode" maxlength="4" placeholder="房间码" autocomplete="off">' +
+      '<button class="btn btn-soft" id="pkJoin">加入</button>' +
+      '</div></div>' +
+      '<p class="muted mt" id="pkMsg">' + (App.api.online ? (App.api.user ? '准备好了就创建房间吧！' : '登录后才能记录战绩哦。') : '服务器未连接，请在终端运行 dazi。') + '</p>' +
+      '</div></div>';
 
-    pts.forEach(function (p) {
-      c.beginPath();
-      c.arc(p.x, p.y, 4, 0, Math.PI * 2);
-      c.fillStyle = '#fff';
-      c.fill();
-      c.strokeStyle = '#ff7a45';
-      c.lineWidth = 2;
-      c.stroke();
-    });
-  }
+    App._mount = function (root) {
+      var body = root.querySelector('#pkBody');
+      var msg = root.querySelector('#pkMsg');
+      var es = null, engine = null, code = null, myId = null, lastPost = 0, room = null;
+
+      function closeStream() { if (es) { es.close(); es = null; } }
+
+      var builtStatus = null;
+
+      /** 比赛进行中只更新数字，不重建 DOM（否则会丢掉正在打的文本） */
+      function updateLive(state) {
+        var stEl = body.querySelector('.pk-status');
+        if (stEl) stEl.textContent = state.status === 'race' ? '比赛中！' : '本局结束';
+        var cards = body.querySelectorAll('.pk-player');
+        var me = null, other = null;
+        state.players.forEach(function (p) {
+          if (App.api.user && p.id === App.api.user.id) me = p; else other = p;
+        });
+        [me, other].forEach(function (p, i) {
+          var card = cards[i];
+          if (!card || !p) return;
+          var pct = Math.round(p.index / state.total * 100);
+          card.querySelector('.pk-bar i').style.width = pct + '%';
+          card.querySelector('.pk-num').textContent =
+            Math.round(p.speed) + ' WPM · ' + Math.round(p.acc) + '% · ' + pct + '%';
+        });
+        if (state.status === 'end') {
+          if (engine) { engine.destroy(); engine = null; }
+          if (!body.querySelector('.pk-result')) {
+            body.insertAdjacentHTML('beforeend', resultHtml(state));
+            var ag = body.querySelector('#pkAgain');
+            if (ag) ag.onclick = function () {
+              closeStream();
+              if (code) App.api.pkLeave(code).catch(function () { });
+              App.rerender();
+            };
+          }
+        }
+      }
+
+      function resultHtml(state) {
+        var rank = state.players.slice().sort(function (a, b) {
+          if (a.finishedAt && b.finishedAt) return a.finishedAt - b.finishedAt;
+          if (a.finishedAt) return -1;
+          if (b.finishedAt) return 1;
+          return b.index - a.index;
+        });
+        var win = rank[0] && App.api.user && rank[0].id === App.api.user.id;
+        return '<div class="pk-result ' + (win ? 'win' : 'lose') + '">' +
+          '<h3>' + (win ? '🏆 你赢啦！' : '💪 这局输了，再来一次？') + '</h3>' +
+          '<ol>' + rank.map(function (p) {
+            return '<li><b>' + esc(p.name) + '</b> · ' + Math.round(p.speed) + ' WPM · ' +
+              Math.round(p.acc) + '% · ' + (p.finishedAt ? '完成' : Math.round(p.index / state.total * 100) + '%') + '</li>';
+          }).join('') + '</ol>' +
+          '<button class="btn btn-primary" id="pkAgain">再来一局</button></div>';
+      }
+
+      function render(state) {
+        if (!state) return;
+        room = state;
+        if (builtStatus && builtStatus !== 'wait' && builtStatus === state.status) {
+          updateLive(state);
+          return;
+        }
+        if (engine) { engine.destroy(); engine = null; }
+        var me = null, other = null;
+        state.players.forEach(function (p) {
+          if (App.api.user && p.id === App.api.user.id) me = p; else other = p;
+        });
+        var h = '';
+        h += '<div class="pk-top">' +
+          '<div class="pk-code">房间码 <b>' + esc(state.code) + '</b></div>' +
+          '<div class="pk-status">' + (state.status === 'wait' ? '等待对手…'
+            : state.status === 'race' ? '比赛中！' : '本局结束') + '</div>' +
+          '<button class="btn btn-ghost" id="pkLeave">离开房间</button></div>';
+
+        h += '<div class="pk-board">';
+        [me, other].forEach(function (p, i) {
+          var name = p ? p.name : (i === 0 ? '我' : '等待对手加入…');
+          var pct = p ? Math.round(p.index / state.total * 100) : 0;
+          h += '<div class="pk-player' + (i === 0 ? ' me' : '') + (p ? '' : ' empty') + '">' +
+            '<div class="pk-name">' + esc(name) + (i === 0 ? '（我）' : '') + '</div>' +
+            '<div class="pk-bar"><i style="width:' + pct + '%"></i></div>' +
+            '<div class="pk-num">' + (p ? Math.round(p.speed) + ' WPM · ' + Math.round(p.acc) + '% · ' + pct + '%' : '—') + '</div>' +
+            '</div>';
+        });
+        h += '</div>';
+
+        if (state.status === 'wait') {
+          h += '<div class="pk-actions">' +
+            '<button class="btn btn-primary" id="pkStart"' + (state.players.length < 2 ? ' disabled' : '') + '>' +
+            (state.players.length < 2 ? '等待同学加入…' : '开始比赛') + '</button>' +
+            '<p class="muted">把房间码告诉同学，两人到齐就能开打。</p></div>';
+        } else {
+          h += '<div class="text-box" id="pkText"></div>';
+          h += '<div class="pk-live"><span id="pkSpeed">0</span> WPM · <span id="pkAcc">100</span>% · 剩余 <span id="pkLeft">0</span></div>';
+        }
+
+        if (state.status === 'end') h += resultHtml(state);
+        body.innerHTML = h;
+        builtStatus = state.status;
+        bind(state);
+      }
+
+      function bind(state) {
+        var lv = body.querySelector('#pkLeave');
+        if (lv) lv.onclick = function () {
+          closeStream();
+          if (code) App.api.pkLeave(code).catch(function () { });
+          location.hash = '#/pk';
+          App.rerender();
+        };
+        var st = body.querySelector('#pkStart');
+        if (st) st.onclick = function () {
+          App.api.pkStart(code).then(function (d) { render(d.room); }).catch(function (e) { msg.textContent = e.message; });
+        };
+        var ag = body.querySelector('#pkAgain');
+        if (ag) ag.onclick = function () {
+          closeStream();
+          if (code) App.api.pkLeave(code).catch(function () { });
+          App.rerender();
+        };
+        if (state.status === 'race' && !engine) startRace(state);
+      }
+
+      function startRace(state) {
+        var box = body.querySelector('#pkText');
+        if (!box) return;
+        engine = App.createEngine({
+          text: state.text, mode: 'en', el: box,
+          onTick: function (s) {
+            var sp = body.querySelector('#pkSpeed');
+            if (!sp) return;
+            sp.textContent = Math.round(s.speed);
+            body.querySelector('#pkAcc').textContent = Math.round(s.acc);
+            body.querySelector('#pkLeft').textContent = (s.total - s.index);
+            var now = Date.now();
+            if (now - lastPost > 300) {
+              lastPost = now;
+              App.api.pkProgress(code, {
+                index: s.index, speed: s.speed, acc: s.acc, finished: false
+              }).catch(function () { });
+            }
+          },
+          onFinish: function (res) {
+            App.api.pkProgress(code, {
+              index: state.text.length, speed: res.speed, acc: res.acc, finished: true
+            }).catch(function () { });
+            App.store.record({
+              lessonId: 'pk', mode: 'en', speed: res.speed, acc: res.acc,
+              chars: res.chars, ms: res.ms, stars: 0, passed: false
+            });
+            App.sound.win();
+          }
+        });
+        engine.start();
+      }
+
+      function open(codeStr) {
+        code = codeStr;
+        closeStream();
+        es = App.api.pkStream(code);
+        es.addEventListener('state', function (e) {
+          try { render(JSON.parse(e.data)); } catch (err) { /* ignore */ }
+        });
+        es.onerror = function () { /* EventSource 会自动重连 */ };
+      }
+
+      root.querySelector('#pkCreate').onclick = function () {
+        if (!App.api.online) { msg.textContent = '服务器未连接，请在终端运行 dazi。'; return; }
+        if (!App.api.user) { App.showLogin(); return; }
+        App.api.pkCreate().then(function (d) {
+          myId = App.api.user.id;
+          render(d.room);
+          open(d.room.code);
+        }).catch(function (e) { msg.textContent = e.message; });
+      };
+      root.querySelector('#pkJoin').onclick = function () {
+        var c = (root.querySelector('#pkCode').value || '').toUpperCase().trim();
+        if (c.length !== 4) { msg.textContent = '房间码是 4 位哦'; return; }
+        App.api.pkJoin(c).then(function (d) {
+          render(d.room);
+          open(c);
+        }).catch(function (e) { msg.textContent = e.message; });
+      };
+
+      App._cleanup = function () { closeStream(); if (engine) engine.destroy(); };
+    };
+    return html;
+  };
 
   /* ================= 排行榜 ================= */
   views.rank = function () {

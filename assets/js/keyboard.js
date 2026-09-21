@@ -63,6 +63,7 @@ window.App = window.App || {};
 
   var Keyboard = {
     FINGERS: FINGERS,
+    ROWS: ROWS,
 
     html: function () {
       var h = '<div class="kb" id="kb">';

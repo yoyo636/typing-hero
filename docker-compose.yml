@@ -1,0 +1,14 @@
+# 可选：用 Docker 一键起服务（适合学校机房 / 服务器）
+services:
+  dazi:
+    build: .
+    # 局域网模式：改 ports 与环境变量即可
+    ports:
+      - "5173:5173"
+    environment:
+      DAZI_HOST: 0.0.0.0
+      DAZI_PORT: 5173
+      DAZI_TEACHER_CODE: dazi2026
+    volumes:
+      - ./server/data:/app/server/data   # 学生数据持久化
+    restart: unless-stopped
